@@ -63,7 +63,7 @@ contract Remittance {
       value: _value,
       deadline: now+_deadline
     });
-    LogSetWithdrawal(_to, withdrawal.value, withdrawal.deadline);
+    LogSetWithdrawal(_to, withdrawals[_passwordHashWithdrawer].value, withdrawals[_passwordHashWithdrawer].deadline);
     return true;
     }
   }
