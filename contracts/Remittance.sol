@@ -41,11 +41,12 @@ contract Remittance {
 
   //set exchange
   function setExchange(uint _commission, bool _active) public returns(bool) {
-    var exchange = exchangeMapping(msg.sender);
-    exchange.commission = _commission;
-    exchange.active = _active;
-    exchange.totalCommission = 0;
-    exchange.balance = 0;
+    exchangeMapping[msg.sender]= Exchange({
+      commission: _commission,
+      active: _active,
+      totalCommission: 0,
+      balance: 0
+    });
     LogSetExchange(msg.sender,_commission,_active);
     return true;
   }
@@ -57,10 +58,11 @@ contract Remittance {
 
   function setWithdrawal(address _exchangeAddress, bytes32 _passwordHashWithdrawer, address _to, uint _value, uint _deadline) public returns (bool) {
     if (exchangeMapping[msg.sender].active == true){
-    var withdrawal = withdrawals(_passwordHashWithdrawer);
-    withdrawal.to = _to;
-    withdrawal.value = _value - exchangeMapping[msg.sender].commission;
-    withdrawal.deadline = now+_deadline;
+    withdrawals[_passwordHashWithdrawer]= Withdrawal({
+      to:_to,
+      value: _value,
+      deadline: now+_deadline
+    });
     LogSetWithdrawal(_to, withdrawal.value, withdrawal.deadline);
     return true;
     }
