@@ -1,6 +1,8 @@
 pragma solidity ^0.4.18;
 
-contract Remittance {
+import "./Mortal.sol";
+
+contract Remittance is Mortal {
   address owner;
   
   //create an exchange struct
@@ -10,8 +12,10 @@ contract Remittance {
     bool active;
     uint totalCommission;
     uint balance;
+    bytes32 passwordhash;
   }
 
+  //create a mapping with all the exchanges by address
   mapping(address => Exchange) public exchangeMapping;
 
   //create a withdrawal struct 
@@ -23,11 +27,15 @@ contract Remittance {
 
   mapping (bytes32 => Withdrawal) public withdrawals;
 
-  event LogSetExchange(address,uint commission, bool active);
+  //create a mapping to store all used passwords
+  mapping (bytes32 => bool) usedPasswords;
+
+
+  event LogSetExchange(address exchangeOwner, address exchangeAddress, uint commission, bool active);
   event LogSetWithdrawal(address to, uint value, uint deadline);
   event LogWithdrawal(uint amount, address);
   event LogTotalCommission(uint);
-  event LogAddAmount(uint amount, address from);
+  event LogWithrawalOfCommission(uint commission, address to);
   
   modifier onlyOwner{
     require(msg.sender == owner);
@@ -35,59 +43,85 @@ contract Remittance {
   }
 
   //constructor
-  function Remittance(){
+  function Remittance() public {
     owner == msg.sender;
   }
 
   //set exchange
-  function setExchange(uint _commission, bool _active) public returns(bool) {
+  function setExchange(address _exchangeAddress, uint _commission, bool _active)
+   public 
+   returns(bool) {
     exchangeMapping[msg.sender]= Exchange({
+      exchangeAddress: _exchangeAddress,
       commission: _commission,
       active: _active,
       totalCommission: 0,
-      balance: 0
+      balance: 0,
+      passwordhash:0
     });
-    LogSetExchange(msg.sender,_commission,_active);
-    return true;
-  }
-  function addAmountToExchange(address _exchangeAddress) payable onlyOwner returns (bool) {
-    exchangeMapping(_exchangeAddress).balance = msg.value;
-    LogAddAmount(msg.value, _exchangeAddress);
+    //emit event upon exchange creation
+    LogSetExchange(msg.sender,_exchangeAddress, _commission,_active);
     return true;
   }
 
-  function setWithdrawal(address _exchangeAddress, bytes32 _passwordHashWithdrawer, address _to, uint _value, uint _deadline) public returns (bool) {
-    if (exchangeMapping[msg.sender].active == true){
-    withdrawals[_passwordHashWithdrawer]= Withdrawal({
+  function toggleExchangeOnOff(bool _OnOff) returns (bool success){
+    exchangeMapping[msg.sender].active = _OnOff;
+    return true;
+  }
+
+  function setWithdrawal(bytes32 _passwordHash, address _to, uint _deadline) payable public returns (bool) {
+    require (_to!=0);
+    if (exchangeMapping[msg.sender].active && !usedPasswords[_passwordHash]){
+    withdrawals[_passwordHash]= Withdrawal({
       to:_to,
-      value: _value,
+      value: msg.value - exchangeMapping[msg.sender].commission,
       deadline: now+_deadline
     });
-    LogSetWithdrawal(_to, withdrawals[_passwordHashWithdrawer].value, withdrawals[_passwordHashWithdrawer].deadline);
+    usedPasswords[_passwordHash] = true;
+    LogSetWithdrawal(_to, msg.value, _deadline);
     return true;
     }
   }
 
 
-  function withdraw(address _exchangeAddress, bytes32 _passwordHash) returns (bool){
+  function withdraw(address _exchangeAddress, string _password) 
+  public 
+  returns (bool)
+  {
     uint amount;
-    require(withdrawals[_passwordHash].value>0);
-    if (withdrawals[_passwordHash].deadline >= now) {
-      if (withdrawals[_passwordHash].to == msg.sender){
-    amount = withdrawals[_passwordHash].value;
-    withdrawals[_passwordHash].value = 0;
+    bytes32 hashedPassword = keccak256(_password);
+
+    require(withdrawals[hashedPassword].value>0);
+    require(withdrawals[hashedPassword].to = msg.sender);
+    require(withdrawals[hashedPassword].deadline >= now);
+
+    amount = withdrawals[hashedPassword].value;
+    withdrawals[hashedPassword].value = 0;
+    exchangeMapping[_exchangeAddress].totalCommission += exchangeMapping[_exchangeAddress].commission;
     msg.sender.transfer(amount);
     LogWithdrawal(amount, msg.sender);
-    exchangeMapping[_exchangeAddress].totalCommission += exchangeMapping[_exchangeAddress].commission;
     LogTotalCommission(exchangeMapping[_exchangeAddress].totalCommission);
     return true;
-      }else{
-        revert();
-      }
-    } else {
-      amount = amount.withdrawals[_passwordHash].value;
-      withdrawals[_passwordHash].value = 0;
-      owner.transer(amount);
+  }
+  
+
+  function reclaimAfterDeadline(bytes32 _passwordHash) 
+  private 
+  onlyOwner 
+  returns(bool)
+  {
+    require(withdrawals[_passwordHash].deadline<now);
+    uint amount = withdrawals[_passwordHash].value;
+    withdrawals[_passwordHash].value = 0;
+    msg.sender.transfer(amount);
     }
+
+  function withdrawCommission()
+  returns (bool)
+  {
+    uint commission = exchangeMapping[msg.sender].totalCommission;
+    exchangeMapping[msg.sender].totalCommission = 0;
+    msg.sender.transfer(commission);
+    LogWithrawalOfCommission(commission, msg.sender);
   }
 }
